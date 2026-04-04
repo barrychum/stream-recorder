@@ -1,0 +1,17 @@
+services:
+  stream-recorder:
+    #build: .
+    #image: stream-recorder-flask:latest
+    image: stellarhub/stream-recorder:flask.1.0
+    container_name: stream-recorder-flask
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+      - ./recordings:/recordings
+    environment:
+      - TZ=Asia/Hong_Kong
+      - PORT=3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

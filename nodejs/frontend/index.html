@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream Recorder</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111418;
+    --surface2: #181c22;
+    --border: #232830;
+    --accent: #00e5ff;
+    --accent2: #ff4d6d;
+    --accent3: #7fff6e;
+    --text: #e8edf5;
+    --text2: #7a8694;
+    --text3: #4a5568;
+    --rec: #ff4d6d;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 20px rgba(0,229,255,0.3);
+  }
+
+  .logo-icon svg { width: 22px; height: 22px; }
+
+  .logo h1 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    display: block;
+    margin-top: 1px;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-pill.active { border-color: var(--rec); color: var(--rec); }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    letter-spacing: 0.2px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover { background: #33ebff; box-shadow: 0 0 16px rgba(0,229,255,0.4); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid transparent;
+  }
+  .btn-danger:hover { border-color: var(--accent2); background: rgba(255,77,109,0.08); }
+
+  .btn-rec {
+    background: var(--rec);
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  .btn-rec:hover { background: #ff6b85; }
+
+  .btn-stop {
+    background: transparent;
+    color: var(--rec);
+    border: 1px solid var(--rec);
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  .btn-stop:hover { background: rgba(255,77,109,0.1); }
+
+  .btn-sm {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  /* Section header */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-family: var(--mono);
+  }
+
+  /* Schedule cards */
+  .schedules-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .schedule-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .schedule-card:hover {
+    border-color: #2d3540;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .schedule-card.recording {
+    border-color: rgba(255,77,109,0.4);
+    box-shadow: 0 0 20px rgba(255,77,109,0.1);
+  }
+
+  .schedule-card.disabled {
+    opacity: 0.5;
+  }
+
+  .card-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 32px; height: 18px;
+    cursor: pointer;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 18px;
+    transition: background 0.2s;
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text3);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle-switch input:checked ~ .toggle-track { background: rgba(0,229,255,0.2); border: 1px solid var(--accent); }
+  .toggle-switch input:checked ~ .toggle-thumb { transform: translateX(14px); background: var(--accent); }
+
+  .rec-badge {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--rec);
+    animation: pulse 1s infinite;
+    display: none;
+  }
+  .schedule-card.recording .rec-badge { display: block; }
+
+  .card-info { min-width: 0; }
+
+  .card-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .meta-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .meta-tag.time { color: var(--accent); border-color: rgba(0,229,255,0.2); }
+  .meta-tag.url { color: var(--text3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 40px;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    color: var(--text3);
+  }
+  .empty-state svg { margin-bottom: 16px; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+  .empty-state h3 { font-size: 18px; color: var(--text2); margin-bottom: 8px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: fadeIn 0.15s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+  }
+  .modal-close:hover { color: var(--text); background: var(--surface2); }
+
+  /* Form */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .form-group.full { grid-column: 1 / -1; }
+
+  label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  input, select {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  input::placeholder { color: var(--text3); }
+
+  select option { background: var(--surface2); }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Toast */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 200;
+  }
+
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 260px;
+    animation: toastIn 0.2s ease;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .toast.success { border-color: rgba(127,255,110,0.3); }
+  .toast.error { border-color: rgba(255,77,109,0.3); }
+  .toast-icon { font-size: 16px; }
+
+  /* Active recordings banner */
+  .active-banner {
+    background: linear-gradient(135deg, rgba(255,77,109,0.1), rgba(255,77,109,0.05));
+    border: 1px solid rgba(255,77,109,0.25);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--rec);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .active-banner span { color: var(--text2); }
+
+  .recurrence-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 16px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .recurrence-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .recurrence-btn.active { border-color: var(--accent); background: rgba(0,229,255,0.1); color: var(--accent); }
+
+  .day-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    min-width: 48px;
+  }
+  .day-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .day-btn.selected { border-color: var(--accent); background: rgba(0,229,255,0.1); color: var(--accent); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3"/>
+          <line x1="12" y1="2" x2="12" y2="5"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="5" y2="12"/>
+          <line x1="19" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Stream Recorder</h1>
+        <span id="healthStatus">connecting...</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill" id="clockPill" title="Container server time">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="clockTime">--:--:--</span>
+        <span id="clockTz" style="color:var(--text3);font-size:10px"></span>
+      </div>
+      <div id="activeStatusPill" class="status-pill" style="display:none">
+        <span class="status-dot"></span>
+        <span id="activeCount">0</span> recording
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Schedule
+      </button>
+    </div>
+  </header>
+
+  <div id="activeBanner" class="active-banner" style="display:none">
+    <span>●</span>
+    <span id="activeList">Recording in progress</span>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title" id="schedulesCount">Schedules</span>
+  </div>
+
+  <div id="schedulesGrid" class="schedules-grid">
+    <!-- Populated by JS -->
+  </div>
+
+  <div id="emptyState" class="empty-state" style="display:none">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+      <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+    <h3>No schedules yet</h3>
+    <p>Create your first recording schedule to get started.</p>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modalOverlay" class="modal-overlay" style="display:none" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalTitle">New Schedule</h2>
+      <button class="modal-close" onclick="closeModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <form id="scheduleForm" onsubmit="handleSubmit(event)">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Program Name</label>
+          <input type="text" id="f_programName" placeholder="Morning News" required>
+        </div>
+        <div class="form-group full">
+          <label>Stream URL</label>
+          <input type="url" id="f_streamUrl" placeholder="https://192.168.38.10:8000/stream.mp3" required>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('http://192.168.38.131:8000/stream.mp3')">CR 1</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('http://192.168.38.132:8000/stream.mp3')">CR 2</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('https://stm.rthk.hk/radio1')">RTHK 1</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('https://stm.rthk.hk/radio2')">RTHK 2</button>
+          </div>
+        </div>
+        <div class="form-group full">
+          <label>Output Directory</label>
+          <input type="text" id="f_filePath" placeholder="/recordings/morning-news" required>
+        </div>
+        <div class="form-group">
+          <label>Start Time</label>
+          <input type="time" id="f_startTime" required>
+        </div>
+        <div class="form-group">
+          <label>Duration (minutes)</label>
+          <input type="number" id="f_duration" min="1" max="1440" placeholder="60" required>
+        </div>
+        <div class="form-group">
+          <label>Audio Bitrate (kbps)</label>
+          <select id="f_bitrate">
+            <option value="64">64 kbps</option>
+            <option value="96" selected>96 kbps</option>
+            <option value="128">128 kbps</option>
+            <option value="192">192 kbps</option>
+            <option value="256">256 kbps</option>
+            <option value="320">320 kbps</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Recurrence</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;">
+            <button type="button" class="recurrence-btn active" data-value="daily" onclick="setRecurrence('daily')">Daily</button>
+            <button type="button" class="recurrence-btn" data-value="weekly" onclick="setRecurrence('weekly')">Select Days</button>
+            <button type="button" class="recurrence-btn" data-value="once" onclick="setRecurrence('once')">Once</button>
+          </div>
+          <input type="hidden" id="f_recurrence" value="daily">
+        </div>
+        <div class="form-group full" id="weekdayGroup" style="display:none">
+          <label>Days of Week</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+            <button type="button" class="day-btn" data-day="1">Mon</button>
+            <button type="button" class="day-btn" data-day="2">Tue</button>
+            <button type="button" class="day-btn" data-day="3">Wed</button>
+            <button type="button" class="day-btn" data-day="4">Thu</button>
+            <button type="button" class="day-btn" data-day="5">Fri</button>
+            <button type="button" class="day-btn" data-day="6">Sat</button>
+            <button type="button" class="day-btn" data-day="0">Sun</button>
+          </div>
+        </div>
+        <div class="form-group full" style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+          <label style="text-transform:none;letter-spacing:0;font-size:13px;font-family:var(--sans);color:var(--text);">
+            <input type="checkbox" id="f_enabled" checked style="width:auto;margin-right:8px;">
+            Enable this schedule
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn">Create Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  const API = '/api';
+  let schedules = [];
+  let editingId = null;
+  let pollInterval;
+
+  // ── API Helpers ──────────────────────────────────────────────────
+  async function api(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // ── Data ────────────────────────────────────────────────────────
+  async function loadSchedules() {
+    try {
+      schedules = await api('GET', '/schedules');
+      renderSchedules();
+    } catch(e) { console.error(e); }
+  }
+
+  async function pollActive() {
+    try {
+      const active = await api('GET', '/recordings/active');
+      const pill = document.getElementById('activeStatusPill');
+      const banner = document.getElementById('activeBanner');
+      const activeList = document.getElementById('activeList');
+      
+      if (active.length > 0) {
+        document.getElementById('activeCount').textContent = active.length;
+        pill.style.display = 'flex';
+        pill.classList.add('active');
+        banner.style.display = 'flex';
+        activeList.textContent = active.map(r => r.programName).join(', ') + ' — recording in progress';
+      } else {
+        pill.style.display = 'none';
+        pill.classList.remove('active');
+        banner.style.display = 'none';
+      }
+
+      // Update card states
+      schedules.forEach(s => {
+        const card = document.querySelector(`[data-id="${s.id}"]`);
+        if (!card) return;
+        const isRec = active.some(a => a.scheduleId === s.id);
+        card.classList.toggle('recording', isRec);
+        const recBtn = card.querySelector('.btn-rec');
+        const stopBtn = card.querySelector('.btn-stop');
+        if (recBtn) recBtn.style.display = isRec ? 'none' : '';
+        if (stopBtn) stopBtn.style.display = isRec ? '' : 'none';
+      });
+    } catch(e) {}
+  }
+
+  async function checkHealth() {
+    try {
+      const h = await api('GET', '/health');
+      document.getElementById('healthStatus').textContent = `${h.schedules} schedules`;
+    } catch(e) {
+      document.getElementById('healthStatus').textContent = 'offline';
+    }
+  }
+
+  // ── Render ──────────────────────────────────────────────────────
+  function renderSchedules() {
+    const grid = document.getElementById('schedulesGrid');
+    const empty = document.getElementById('emptyState');
+    const count = document.getElementById('schedulesCount');
+
+    count.textContent = `Schedules (${schedules.length})`;
+
+    if (schedules.length === 0) {
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    grid.innerHTML = schedules.map(s => {
+      const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const recurrenceLabel = s.recurrence === 'daily' ? '↻ Daily'
+        : s.recurrence === 'weekly' ? '↻ ' + (s.weekDays || []).map(d => dayNames[d]).join(', ')
+        : s.recurrence === 'once' ? '→ Once'
+        : s.recurrence;
+
+      return `
+        <div class="schedule-card ${s.isRecording ? 'recording' : ''} ${!s.enabled ? 'disabled' : ''}" data-id="${s.id}">
+          <div class="card-indicator">
+            <label class="toggle-switch" onclick="toggleEnabled('${s.id}', ${!s.enabled})">
+              <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <div class="rec-badge"></div>
+          </div>
+          <div class="card-info">
+            <div class="card-name">
+              ${escHtml(s.programName)}
+            </div>
+            <div class="card-meta">
+              <span class="meta-tag time">⏰ ${s.startTime}</span>
+              <span class="meta-tag">⏱ ${s.duration} min</span>
+              <span class="meta-tag">🎵 ${s.bitrate}k</span>
+              <span class="meta-tag">${recurrenceLabel}</span>
+              <span class="meta-tag url" title="${escHtml(s.streamUrl)}">⫘ ${escHtml(s.streamUrl)}</span>
+              ${s.lastRun ? `<span class="meta-tag">last: ${formatRelative(s.lastRun)}</span>` : ''}
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-rec btn-sm" onclick="recordNow('${s.id}')" ${s.isRecording ? 'style="display:none"' : ''}>
+              ● REC
+            </button>
+            <button class="btn btn-stop btn-sm" onclick="stopRec('${s.id}')" ${!s.isRecording ? 'style="display:none"' : ''}>
+              ■ STOP
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="openEdit('${s.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSchedule('${s.id}')">✕</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────
+  async function toggleEnabled(id, enabled) {
+    try {
+      await api('PUT', `/schedules/${id}`, { enabled });
+      await loadSchedules();
+      toast(enabled ? 'Schedule enabled' : 'Schedule disabled', 'success');
+    } catch(e) { toast('Failed to update', 'error'); }
+  }
+
+  async function recordNow(id) {
+    try {
+      await api('POST', `/schedules/${id}/record`);
+      toast('Recording started!', 'success');
+      setTimeout(pollActive, 500);
+    } catch(e) { toast('Failed to start recording', 'error'); }
+  }
+
+  async function stopRec(id) {
+    try {
+      await api('POST', `/schedules/${id}/stop`);
+      toast('Recording stopped', 'success');
+      setTimeout(pollActive, 500);
+    } catch(e) { toast('Failed to stop recording', 'error'); }
+  }
+
+  async function deleteSchedule(id) {
+    const s = schedules.find(x => x.id === id);
+    if (!confirm(`Delete "${s?.programName}"?`)) return;
+    try {
+      await api('DELETE', `/schedules/${id}`);
+      await loadSchedules();
+      toast('Schedule deleted', 'success');
+    } catch(e) { toast('Failed to delete', 'error'); }
+  }
+
+  // ── Modal ───────────────────────────────────────────────────────
+  function openModal(id) {
+    editingId = null;
+    document.getElementById('modalTitle').textContent = 'New Schedule';
+    document.getElementById('submitBtn').textContent = 'Create Schedule';
+    document.getElementById('scheduleForm').reset();
+    document.getElementById('f_enabled').checked = true;
+    setRecurrence('daily');
+    setSelectedDays([]);
+    document.getElementById('modalOverlay').style.display = 'flex';
+  }
+
+  function openEdit(id) {
+    const s = schedules.find(x => x.id === id);
+    if (!s) return;
+    editingId = id;
+    document.getElementById('modalTitle').textContent = 'Edit Schedule';
+    document.getElementById('submitBtn').textContent = 'Save Changes';
+    document.getElementById('f_programName').value = s.programName;
+    document.getElementById('f_streamUrl').value = s.streamUrl;
+    document.getElementById('f_filePath').value = s.filePath;
+    document.getElementById('f_startTime').value = s.startTime;
+    document.getElementById('f_duration').value = s.duration;
+    document.getElementById('f_bitrate').value = s.bitrate;
+    setRecurrence(s.recurrence);
+    setSelectedDays(s.weekDays || []);
+    document.getElementById('f_enabled').checked = s.enabled;
+    document.getElementById('modalOverlay').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').style.display = 'none';
+    editingId = null;
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  }
+
+  function setRecurrence(value) {
+    document.getElementById('f_recurrence').value = value;
+    document.querySelectorAll('.recurrence-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.value === value);
+    });
+    document.getElementById('weekdayGroup').style.display = value === 'weekly' ? '' : 'none';
+  }
+
+  function getSelectedDays() {
+    return Array.from(document.querySelectorAll('.day-btn.selected')).map(b => Number(b.dataset.day));
+  }
+
+  function setSelectedDays(days) {
+    document.querySelectorAll('.day-btn').forEach(b => {
+      b.classList.toggle('selected', days.includes(Number(b.dataset.day)));
+    });
+  }
+
+  // Wire up day buttons
+  document.querySelectorAll('.day-btn').forEach(b => {
+    b.addEventListener('click', () => b.classList.toggle('selected'));
+  });
+
+  function setUrl(url) {
+    document.getElementById('f_streamUrl').value = url;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const recurrence = document.getElementById('f_recurrence').value;
+    const weekDays = getSelectedDays();
+    const data = {
+      programName: document.getElementById('f_programName').value,
+      streamUrl: document.getElementById('f_streamUrl').value,
+      filePath: document.getElementById('f_filePath').value,
+      startTime: document.getElementById('f_startTime').value,
+      duration: document.getElementById('f_duration').value,
+      bitrate: document.getElementById('f_bitrate').value,
+      recurrence,
+      weekDays,
+      enabled: document.getElementById('f_enabled').checked,
+    };
+
+    if (recurrence === 'weekly' && weekDays.length === 0) {
+      toast('Please select at least one day', 'error');
+      return;
+    }
+
+    try {
+      if (editingId) {
+        await api('PUT', `/schedules/${editingId}`, data);
+        toast('Schedule updated!', 'success');
+      } else {
+        await api('POST', '/schedules', data);
+        toast('Schedule created!', 'success');
+      }
+      closeModal();
+      await loadSchedules();
+    } catch(e) {
+      toast('Failed to save schedule', 'error');
+    }
+  }
+
+  // ── Toast ───────────────────────────────────────────────────────
+  function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span> ${msg}`;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // ── Utils ───────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatRelative(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+
+  async function updateClock() {
+    try {
+      const t = await api('GET', '/time');
+      // Parse the local time string from server (format: dd/mm/yyyy, hh:mm:ss)
+      document.getElementById('clockTime').textContent = t.local.split(', ')[1] || t.local;
+      document.getElementById('clockTz').textContent = t.timezone;
+    } catch(e) {}
+  }
+
+  // ── Init ────────────────────────────────────────────────────────
+  loadSchedules();
+  checkHealth();
+  updateClock();
+  setInterval(updateClock, 1000);
+  pollInterval = setInterval(() => { pollActive(); }, 5000);
+</script>
+</body>
+</html>
