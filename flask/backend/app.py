@@ -44,13 +44,25 @@ def load_schedules():
 
 def save_schedules():
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    DATA_FILE.write_text(json.dumps(list(schedules.values()), indent=2))
+    DATA_FILE.write_text(json.dumps(list(schedules.values()), indent=2, ensure_ascii=False), encoding='utf-8')
 
 # ── Recording ─────────────────────────────────────────────────────
 def get_output_path(schedule: dict, dt: datetime = None) -> str:
     dt = dt or datetime.now(TIMEZONE)
     filename = f"{schedule['programName']}-{dt.strftime('%Y-%m-%d')}.mp3"
     return str(Path(schedule['filePath']) / filename)
+
+def sanitize_name(name: str) -> str:
+    # Allow unicode letters/digits, hyphens and underscores; replace everything else with _
+    import unicodedata
+    result = []
+    for c in name:
+        cat = unicodedata.category(c)
+        if cat.startswith('L') or cat.startswith('N') or c in '-_':
+            result.append(c)
+        else:
+            result.append('_')
+    return ''.join(result).strip('_') or 'unnamed'
 
 def start_recording(schedule_id: str):
     with state_lock:
@@ -67,9 +79,8 @@ def start_recording(schedule_id: str):
 
     print(f"[{s['programName']}] Starting recording -> {output_path}")
 
-    cmd = ['ffmpeg', '-loglevel', 'warning']
+    cmd = ['ffmpeg', '-loglevel', 'error']
 
-    # Skip TLS verification for self-signed certs on local streams
     if s['streamUrl'].startswith('https://'):
         cmd += ['-tls_verify', '0']
 
@@ -82,6 +93,7 @@ def start_recording(schedule_id: str):
         output_path,
     ]
 
+    print(f"[{s['programName']}] CMD: {' '.join(cmd)}")
     try:
         proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
     except FileNotFoundError:
@@ -104,15 +116,18 @@ def start_recording(schedule_id: str):
     def _wait():
         try:
             _, stderr = proc.communicate()
-            if stderr:
-                for line in stderr.decode(errors='replace').splitlines():
+            stderr_text = stderr.decode(errors='replace').strip() if stderr else ''
+            if stderr_text:
+                for line in stderr_text.splitlines():
                     if line.strip():
                         print(f"[{s['programName']}] ffmpeg: {line}")
+            else:
+                print(f"[{s['programName']}] ffmpeg: (no output)")
         except Exception as e:
             print(f"[{s['programName']}] wait error: {e}")
         finally:
             exit_code = proc.returncode if proc.returncode is not None else -1
-            print(f"[{s['programName']}] Recording finished (exit {exit_code}) -> cleaning up")
+            print(f"[{s['programName']}] Recording finished (exit {exit_code})")
             with state_lock:
                 active_recordings.pop(schedule_id, None)
                 if schedule_id in schedules:
@@ -216,15 +231,38 @@ class _SuppressPollingLogs(logging.Filter):
 logging.getLogger('werkzeug').addFilter(_SuppressPollingLogs())
 
 # ── API ───────────────────────────────────────────────────────────
+def get_next_run(s: dict):
+    """Return next run datetime for a schedule, or None if disabled/once-fired."""
+    if not s.get('enabled'):
+        return None
+    job = scheduler.get_job(make_job_id(s['id']))
+    if job and job.next_run_time:
+        return job.next_run_time
+    return None
+
 def schedule_with_status(s: dict) -> dict:
     is_recording = s['id'] in active_recordings
-    # Keep status field in sync with actual recording state
     status = 'recording' if is_recording else s.get('status', 'idle')
-    return {**s, 'isRecording': is_recording, 'status': status}
+    next_run = get_next_run(s)
+    return {
+        **s,
+        'isRecording': is_recording,
+        'status': status,
+        'nextRun': next_run.isoformat() if next_run else None,
+    }
 
 @app.get('/api/schedules')
 def list_schedules():
-    return jsonify([schedule_with_status(s) for s in schedules.values()])
+    result = [schedule_with_status(s) for s in schedules.values()]
+    # Sort: currently recording first, then by next run time, disabled last
+    def sort_key(s):
+        if s['isRecording']:
+            return (0, '')
+        if s['nextRun']:
+            return (1, s['nextRun'])
+        return (2, s.get('programName', ''))
+    result.sort(key=sort_key)
+    return jsonify(result)
 
 @app.get('/api/schedules/<sid>')
 def get_schedule(sid):
@@ -242,9 +280,9 @@ def create_schedule():
 
     s = {
         'id': str(uuid.uuid4()),
-        'programName': ''.join(c if c.isalnum() or c in '-_' else '_' for c in body['programName']),
-        'streamUrl': body['streamUrl'],
-        'filePath': body['filePath'],
+        'programName': sanitize_name(body['programName']),
+        'streamUrl': body['streamUrl'].strip(),
+        'filePath': body['filePath'].strip(),
         'startTime': body['startTime'],
         'duration': int(body['duration']),
         'bitrate': int(body.get('bitrate', 96)),
@@ -281,7 +319,9 @@ def update_schedule(sid):
             **existing,
             **body,
             'id': sid,
-            'programName': ''.join(c if c.isalnum() or c in '-_' else '_' for c in name_raw),
+            'programName': sanitize_name(name_raw),
+            'streamUrl': body.get('streamUrl', existing['streamUrl']).strip(),
+            'filePath': body.get('filePath', existing['filePath']).strip(),
             'duration': int(body.get('duration', existing['duration'])),
             'bitrate': int(body.get('bitrate', existing['bitrate'])),
             'weekDays': body.get('weekDays', existing.get('weekDays', [])),

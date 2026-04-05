@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/data
       - ./recordings:/recordings
+      - ./streams.json:/app/frontend/streams.json:ro
     environment:
       - TZ=Asia/Hong_Kong
       - PORT=3000

@@ -1,0 +1,4 @@
+[
+  { "label": "Stream 1", "url": "http://192.168.38.131:8000/stream.mp3" },
+  { "label": "Stream 2", "url": "http://192.168.38.132:8000/stream.mp3" }
+]

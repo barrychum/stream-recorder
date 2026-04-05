@@ -606,12 +606,7 @@
         <div class="form-group full">
           <label>Stream URL</label>
           <input type="url" id="f_streamUrl" placeholder="https://192.168.38.10:8000/stream.mp3" required>
-          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('http://192.168.38.131:8000/stream.mp3')">CR 1</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('http://192.168.38.132:8000/stream.mp3')">CR 2</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('https://stm.rthk.hk/radio1')">RTHK 1</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('https://stm.rthk.hk/radio2')">RTHK 2</button>
-          </div>
+          <div id="streamButtons" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"></div>
         </div>
         <div class="form-group full">
           <label>Output Directory</label>
@@ -762,6 +757,12 @@
         : s.recurrence === 'once' ? '→ Once'
         : s.recurrence;
 
+      const nextRunTag = s.isRecording
+        ? `<span class="meta-tag" style="color:var(--rec);border-color:rgba(255,77,109,0.3)">● Recording</span>`
+        : s.nextRun
+          ? `<span class="meta-tag" style="color:var(--accent3);border-color:rgba(127,255,110,0.2)" title="${new Date(s.nextRun).toLocaleString()}">▶ ${formatNextRun(s.nextRun)}</span>`
+          : s.enabled ? '' : `<span class="meta-tag" style="color:var(--text3)">— disabled</span>`;
+
       return `
         <div class="schedule-card ${s.isRecording ? 'recording' : ''} ${!s.enabled ? 'disabled' : ''}" data-id="${s.id}">
           <div class="card-indicator">
@@ -782,6 +783,7 @@
               <span class="meta-tag">🎵 ${s.bitrate}k</span>
               <span class="meta-tag">${recurrenceLabel}</span>
               <span class="meta-tag url" title="${escHtml(s.streamUrl)}">⫘ ${escHtml(s.streamUrl)}</span>
+              ${nextRunTag}
               ${s.lastRun ? `<span class="meta-tag">last: ${formatRelative(s.lastRun)}</span>` : ''}
             </div>
           </div>
@@ -950,6 +952,20 @@
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function formatNextRun(iso) {
+    const diff = new Date(iso) - Date.now();
+    if (diff < 0) return 'soon';
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'in <1 min';
+    if (mins < 60) return `in ${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hrs < 24) return remMins > 0 ? `in ${hrs}h ${remMins}m` : `in ${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    const remHrs = hrs % 24;
+    return remHrs > 0 ? `in ${days}d ${remHrs}h` : `in ${days}d`;
+  }
+
   function formatRelative(iso) {
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
@@ -969,8 +985,23 @@
     } catch(e) {}
   }
 
+  async function loadStreamButtons() {
+    try {
+      const res = await fetch('/streams.json?_=' + Date.now());
+      if (!res.ok) return;
+      const streams = await res.json();
+      const container = document.getElementById('streamButtons');
+      container.innerHTML = streams.map(s =>
+        `<button type="button" class="btn btn-ghost btn-sm" onclick="setUrl('${escHtml(s.url)}')">${escHtml(s.label)}</button>`
+      ).join('');
+    } catch(e) {
+      console.warn('Could not load streams.json:', e.message);
+    }
+  }
+
   // ── Init ────────────────────────────────────────────────────────
   loadSchedules();
+  loadStreamButtons();
   checkHealth();
   updateClock();
   setInterval(updateClock, 1000);
