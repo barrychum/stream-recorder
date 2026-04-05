@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+  Stream Recorder - Frontend
+  Version: 1.1
+
+  Single-page application served as a static file by Flask.
+  Communicates with the backend via REST API calls to /api/*.
+
+  Key behaviours:
+    - Schedules loaded once on page load; manually refreshed after create/edit/delete
+    - Active recording status polled every 5s via /api/recordings/active
+      (updates header pill, banner, and per-card REC/STOP buttons without re-rendering)
+    - Server clock polled every 1s via /api/time (shows container timezone, not browser)
+    - Stream URL quick-fill buttons loaded from /streams.json (externally mountable volume)
+    - Recurrence: Daily | Select Days (multi-toggle Mon-Sun) | Once
+    - Schedule list sorted server-side: recording → soonest next run → disabled
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +22,13 @@
 <title>Stream Recorder</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* ── Design tokens ─────────────────────────────────────────────────────────
+     All colours, fonts, and theme values in one place.
+     --accent  : cyan highlight (interactive elements, active states)
+     --accent2 : red/pink (danger actions, recording indicator)
+     --accent3 : green (next-run countdown tag)
+     --rec     : recording red (matches accent2, used for REC badge and banner)
+  ── */
   :root {
     --bg: #0a0c10;
     --surface: #111418;
@@ -671,12 +694,18 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+  // ── Constants & State ────────────────────────────────────────────
+  // schedules: local cache of schedule objects from /api/schedules
+  // editingId: UUID of schedule being edited, null when creating new
+  // pollInterval: handle for the 5s active-recording poll timer
   const API = '/api';
   let schedules = [];
   let editingId = null;
   let pollInterval;
 
-  // ── API Helpers ──────────────────────────────────────────────────
+  // ── API Helper ───────────────────────────────────────────────────
+  // Thin wrapper around fetch(); always sends/expects JSON.
+  // Throws on non-2xx responses so callers can catch with try/catch.
   async function api(method, path, body) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
@@ -685,7 +714,16 @@
     return res.json();
   }
 
-  // ── Data ────────────────────────────────────────────────────────
+  // ── Data & Polling ───────────────────────────────────────────────
+  // loadSchedules: full reload from API, triggers a full re-render.
+  //   Called on init and after any create/edit/delete action.
+  //
+  // pollActive: lightweight poll of /api/recordings/active every 5s.
+  //   Only updates the header pill, banner, and per-card REC/STOP buttons
+  //   by direct DOM manipulation — does NOT re-render the full list,
+  //   so there is no visual blink/flicker.
+  //
+  // checkHealth: updates the subtitle under the logo (schedule count / offline).
   async function loadSchedules() {
     try {
       schedules = await api('GET', '/schedules');
@@ -735,7 +773,11 @@
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────
+  // Rebuilds the full schedule card list from the local `schedules` cache.
+  // Each card shows: program name, start time, duration, bitrate, recurrence,
+  // stream URL, next-run countdown (green), last-run time, and action buttons.
+  // nextRunTag priority: Recording (red) > next run countdown (green) > disabled (grey)
   function renderSchedules() {
     const grid = document.getElementById('schedulesGrid');
     const empty = document.getElementById('emptyState');
@@ -836,7 +878,11 @@
     } catch(e) { toast('Failed to delete', 'error'); }
   }
 
-  // ── Modal ───────────────────────────────────────────────────────
+  // ── Modal ────────────────────────────────────────────────────────
+  // openModal()  : open in "create" mode (blank form, editingId=null)
+  // openEdit(id) : open in "edit" mode (pre-filled form, editingId=id)
+  // closeModal() : hide modal, clear editingId
+  // handleOverlayClick: close modal when clicking the dark backdrop
   function openModal(id) {
     editingId = null;
     document.getElementById('modalTitle').textContent = 'New Schedule';
@@ -875,7 +921,10 @@
     if (e.target === document.getElementById('modalOverlay')) closeModal();
   }
 
-  function setRecurrence(value) {
+  // setRecurrence: switches the active recurrence mode button and shows/hides
+  //   the day-of-week picker. Stores the value in the hidden #f_recurrence input.
+  // getSelectedDays / setSelectedDays: read/write the multi-select day buttons.
+  //   Day values use JS convention: 0=Sun, 1=Mon, ..., 6=Sat (matches backend weekDays).
     document.getElementById('f_recurrence').value = value;
     document.querySelectorAll('.recurrence-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.value === value);
@@ -947,7 +996,10 @@
     setTimeout(() => el.remove(), 3000);
   }
 
-  // ── Utils ───────────────────────────────────────────────────────
+  // ── Utils ────────────────────────────────────────────────────────
+  // escHtml      : escape user-supplied strings before inserting into innerHTML
+  // formatNextRun: human-readable countdown to next run (e.g. "in 2h 30m")
+  // formatRelative: human-readable time since last run (e.g. "3h ago")
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -985,6 +1037,10 @@
     } catch(e) {}
   }
 
+  // loadStreamButtons: fetches /streams.json and renders quick-fill URL buttons.
+  // streams.json is mounted as a read-only volume on the Docker host so stream
+  // URLs can be changed without rebuilding the image or editing this file.
+  // Format: [{ "label": "Stream 1", "url": "http://..." }, ...]
   async function loadStreamButtons() {
     try {
       const res = await fetch('/streams.json?_=' + Date.now());
@@ -999,7 +1055,13 @@
     }
   }
 
-  // ── Init ────────────────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────
+  // Startup sequence:
+  //   1. Load and render all schedules
+  //   2. Load stream URL quick-fill buttons from /streams.json
+  //   3. Check backend health (updates logo subtitle)
+  //   4. Start server clock (1s interval, shows container time + timezone)
+  //   5. Start active-recording poll (5s interval, updates REC/STOP states)
   loadSchedules();
   loadStreamButtons();
   checkHealth();
