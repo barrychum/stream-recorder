@@ -658,6 +658,10 @@
             Enable this schedule
           </label>
         </div>
+        <div class="form-group full">
+          <label>Post-Script (optional)</label>
+          <input type="text" id="f_postScript" placeholder="notify.sh (filename under /scripts)">
+        </div>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -783,6 +787,7 @@
               <span class="meta-tag">🎵 ${s.bitrate}k</span>
               <span class="meta-tag">${recurrenceLabel}</span>
               <span class="meta-tag url" title="${escHtml(s.streamUrl)}">⫘ ${escHtml(s.streamUrl)}</span>
+              ${s.postScript ? `<span class="meta-tag" title="/scripts/${escHtml(s.postScript)}">⚙ ${escHtml(s.postScript)}</span>` : ''}
               ${nextRunTag}
               ${s.lastRun ? `<span class="meta-tag">last: ${formatRelative(s.lastRun)}</span>` : ''}
             </div>
@@ -845,6 +850,7 @@
     document.getElementById('f_enabled').checked = true;
     setRecurrence('daily');
     setSelectedDays([]);
+    document.getElementById('f_postScript').value = '';
     document.getElementById('modalOverlay').style.display = 'flex';
   }
 
@@ -863,6 +869,7 @@
     setRecurrence(s.recurrence);
     setSelectedDays(s.weekDays || []);
     document.getElementById('f_enabled').checked = s.enabled;
+    document.getElementById('f_postScript').value = s.postScript || '';
     document.getElementById('modalOverlay').style.display = 'flex';
   }
 
@@ -916,6 +923,7 @@
       recurrence,
       weekDays,
       enabled: document.getElementById('f_enabled').checked,
+      postScript: document.getElementById('f_postScript').value.trim(),
     };
 
     if (recurrence === 'weekly' && weekDays.length === 0) {

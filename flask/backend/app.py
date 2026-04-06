@@ -132,6 +132,18 @@ def start_recording(schedule_id: str):
             if exit_code == 0 and Path(tmp_path).exists():
                 Path(tmp_path).rename(output_path)
                 print(f"[{s['programName']}] Recording saved -> {output_path}")
+                post_script = s.get('postScript', '').strip()
+                if post_script:
+                    script_path = Path('/scripts') / post_script
+                    if script_path.exists():
+                        print(f"[{s['programName']}] Running post-script: {script_path}")
+                        try:
+                            subprocess.Popen([str(script_path), output_path],
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception as e:
+                            print(f"[{s['programName']}] Post-script error: {e}")
+                    else:
+                        print(f"[{s['programName']}] Post-script not found: {script_path}")
             elif Path(tmp_path).exists():
                 print(f"[{s['programName']}] Recording failed (exit {exit_code}), keeping {tmp_path}")
             with state_lock:
@@ -295,6 +307,7 @@ def create_schedule():
         'recurrence': body.get('recurrence', 'daily'),
         'weekDays': body.get('weekDays', []),
         'enabled': body.get('enabled', True),
+        'postScript': body.get('postScript', '').strip(),
         'createdAt': datetime.now(TIMEZONE).isoformat(),
         'lastRun': None,
         'lastOutput': None,
@@ -331,6 +344,7 @@ def update_schedule(sid):
             'duration': int(body.get('duration', existing['duration'])),
             'bitrate': int(body.get('bitrate', existing['bitrate'])),
             'weekDays': body.get('weekDays', existing.get('weekDays', [])),
+            'postScript': body.get('postScript', existing.get('postScript', '')).strip(),
         }
         schedules[sid] = updated
         save_schedules()
